@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from art import *
 # Import Project Modules -----------------------------------------------------------------------------------------------
-from utils import Setup, Initialization, Data_Loader, dataset_class, Data_Verifier
+from utils import *
 from Models.model import model_factory, count_parameters
 from Models.optimizers import get_optimizer
 from Models.loss import get_loss_module
@@ -63,31 +63,9 @@ if __name__ == '__main__':
         # ------------------------------------ Load Data ---------------------------------------------------------------
         logger.info("Loading Data ...")
 
-        data_file = os.path.join(config['data_dir'], 'result.npy')
-        if os.path.exists(data_file):
-            data = np.load(data_file, allow_pickle=True)
-        else:
-            raise FileNotFoundError(f"Data file {data_file} not found.")
-        
-        val_ratio = 0.1
-        n = len(data)
-        n_train = n - int(n * val_ratio)
-        train_data = data[:n_train]
-        val_data = data[n_train:]
-        
-        def get_data(data):
-            x, y = data[:, :12, 1:], data[:, 12:, :]
-            # 미래의 강수량 concat
-            min10 = y[:, :, 2][:, :, np.newaxis]
-            x = np.concatenate((x, min10), axis=2)
-            x = np.transpose(x, (0, 2, 1))
-            label = y[:, 0, 1]
-            # 0 이면 0, 0 < x <= 5 이면 1, 5 < x <= 10 이면 2, 10 < x <= 15 이면 3, 15 < x <= 30 이면 4, 30 < x <=50 이면 5 로 라벨링
-            label = np.where(label == 0, 0, np.where(label <= 5, 1, np.where(label <= 10, 2, np.where(label <= 15, 3, np.where(label <= 30, 4, 5)))))
-            return x, label
-        
-        train_data, train_label = get_data(train_data)
-        val_data, val_label = get_data(val_data)
+        data, label = Sensor_Data_Loader(config, concat_future_rain=True, shuffle=True)
+        train_data, val_data = data_split(data, val_ratio=0.1)
+        train_label, val_label = data_split(label, val_ratio=0.1)
         
         Data = {'train_data': train_data, 'train_label': train_label, 'val_data': val_data, 'val_label': val_label, 'test_data': val_data, 'test_label': val_label}
 
@@ -120,8 +98,8 @@ if __name__ == '__main__':
         trainer = SupervisedTrainer(model, train_loader, device, config['loss_module'], config['optimizer'], l2_reg=0,
                                     print_interval=config['print_interval'], console=config['console'], print_conf_mat=False)
         val_evaluator = SupervisedTrainer(model, val_loader, device, config['loss_module'],
-                                          print_interval=config['print_interval'], console=config['console'],
-                                          print_conf_mat=False)
+                                        print_interval=config['print_interval'], console=config['console'],
+                                        print_conf_mat=False)
 
         train_runner(config, model, trainer, val_evaluator, save_path)
         best_model, optimizer, start_epoch = load_model(model, save_path, config['optimizer'])
@@ -135,6 +113,10 @@ if __name__ == '__main__':
         for k, v in best_aggr_metrics_test.items():
             print_str += '{}: {} | '.format(k, v)
         print(print_str)
+
+        print(pd.DataFrame(train_label).value_counts())
+        print(pd.DataFrame(val_label).value_counts())
+
         dic_position_results.append(all_metrics['total_accuracy'])
         problem_df = pd.DataFrame(dic_position_results)
         problem_df.to_csv(os.path.join(config['pred_dir'] + '/' + problem + '.csv'))

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import torch
 import numpy as np
@@ -78,6 +79,44 @@ def Data_Loader(config):
         Data = load_UEA_data.load(config)  # Load UEA *.ts Data
     return Data
 
+
+def Sensor_Data_Loader(config, concat_future_rain=False, thresholds=[0, 5, 10, 15, 30], shuffle=False):
+    path = os.path.join(config['data_dir'], 'result.npy')
+    if os.path.exists(path):
+        raw_data = np.load(path, allow_pickle=True)
+    else:
+        raise FileNotFoundError(f"Data file {path} not found.")
+
+    # Data
+    data = raw_data[:, :12, 1:]
+    if concat_future_rain:
+        min10 = raw_data[:, 12:, 2][:, :, np.newaxis]
+        data = np.concatenate((data, min10), axis=2) # 미래의 강수량 concat
+    data = np.transpose(data, (0, 2, 1)) # 1d conv을 위해 transpose
+
+    # Label 
+    label = raw_data[:, 12, 1]
+    
+    # 라벨링 기준 설정
+    label_result = np.zeros_like(label).astype(np.int32)
+    for i in range(len(thresholds)):
+        min = thresholds[i]
+        max = int(thresholds[i + 1]) if i + 1 < len(thresholds) else sys.maxsize
+        label_result = np.where((label > min) & (label <= max), i + 1, label_result)
+
+    if shuffle:
+        indices = np.random.permutation(len(data))
+        data = data[indices]
+        label_result = label_result[indices]
+
+    return data, label_result
+
+def data_split(data, val_ratio):
+    n = len(data)
+    n_train = n - int(n * val_ratio)
+    train_data = data[:n_train]
+    val_data = data[n_train:]
+    return train_data, val_data
 
 def Data_Verifier(config):
 

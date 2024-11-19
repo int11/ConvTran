@@ -439,7 +439,12 @@ class Analyzer(object):
             plot_confusion_matrix(ConfMatrix, self.existing_class_names)
 
         # Normalize the confusion matrix by row (i.e by the number of samples in each class)
-        self.ConfMatrix_normalized_row = ConfMatrix.astype('float') / ConfMatrix.sum(axis=1)[:, np.newaxis]
+        # self.ConfMatrix_normalized_row = ConfMatrix.astype('float') / ConfMatrix.sum(axis=1)[:, np.newaxis]
+        ConfMatrix_sum = ConfMatrix.sum(axis=1)
+        nonzero_rows = ConfMatrix_sum != 0
+        self.ConfMatrix_normalized_row = np.zeros_like(ConfMatrix, dtype=float)
+        self.ConfMatrix_normalized_row[nonzero_rows] = ConfMatrix[nonzero_rows].astype('float') / ConfMatrix_sum[nonzero_rows][:, np.newaxis]
+
 
         if self.print_conf_mat:
             print_confusion_matrix(self.ConfMatrix_normalized_row, label_strings=self.existing_class_names,
@@ -458,7 +463,7 @@ class Analyzer(object):
 
         # returns metrics for each class, in the same order as existing_class_names
         self.precision, self.recall, self.f1, self.support = metrics.precision_recall_fscore_support(y_true, y_pred,
-                                                                                                     labels=self.existing_class_ind)
+                                                                                                     labels=self.existing_class_ind, zero_division=0)
 
         # Print report
         if self.print_conf_mat:
